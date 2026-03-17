@@ -11,11 +11,13 @@ that flows through the REST API. FastAPI uses them to:
 from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class PaymentResponse(BaseModel):
     """What the API returns when you fetch a payment."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     order_id: UUID
@@ -23,6 +25,3 @@ class PaymentResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True  # Allows converting SQLAlchemy models directly

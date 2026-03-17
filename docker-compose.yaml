@@ -1,15 +1,10 @@
 # Docker Compose for local development of Payment Service.
 #
-# Starts three containers:
-#   1. PostgreSQL — stores payment records
-#   2. Kafka — message broker for event-driven communication
-#   3. Payment Service — the FastAPI application
+# NOTE: Kafka runs in the infra repo — start it first:
+#   cd ../infra && docker compose up -d
 #
-# Kafka runs in KRaft mode (no Zookeeper needed).
-# KRaft is Kafka's built-in consensus protocol that replaced
-# Zookeeper from Kafka 3.3+. One less container to manage.
-#
-# Usage: docker compose up --build
+# Then start this service:
+#   docker compose up --build
 
 services:
 
@@ -20,53 +15,32 @@ services:
       POSTGRES_PASSWORD: payment
       POSTGRES_DB: payment_db
     ports:
-      - "5433:5432"  # 5433 to avoid conflicts with other services
+      - "5433:5432"
     volumes:
       - payment_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U payment"]
+      test: ["CMD-SHELL", "pg_isready -U payment -d payment_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  kafka:
-    image: bitnami/kafka:3.7
-    ports:
-      - "9092:9092"
-    environment:
-      # KRaft mode — no Zookeeper needed
-      KAFKA_CFG_NODE_ID: 1
-      KAFKA_CFG_PROCESS_ROLES: broker,controller
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-
-      # Listener config: one for internal (Docker network), one for external (host)
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093,EXTERNAL://:9092
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-
-      # Auto-create topics when a producer/consumer first references them
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
-      interval: 10s
-      timeout: 10s
       retries: 5
 
   payment-service:
     build: .
     ports:
-      - "8003:8003"
+      - "8003:8000"
     environment:
-      # Override defaults from config.py to point to Docker network hostnames
       DATABASE_URL: postgresql://payment:payment@postgres:5432/payment_db
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
+    networks:
+      - default
+      - docker_default
 
 volumes:
   payment_pgdata:
+
+networks:
+  docker_default:
+    external: true
