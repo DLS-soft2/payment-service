@@ -10,15 +10,18 @@ from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app import database
 from app.database import Base, get_db
 from app.main import app
 
 # SQLite in-memory — created fresh for each test
-SQLALCHEMY_TEST_URL = "sqlite:///./test.db"
+SQLALCHEMY_TEST_URL = "sqlite+pysqlite:///:memory:"
 test_engine = create_engine(
-    SQLALCHEMY_TEST_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_TEST_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
 TestSession = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
