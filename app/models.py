@@ -10,8 +10,7 @@ tracks where the payment is in its lifecycle:
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Float, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Float, DateTime, Uuid
 
 from app.database import Base
 
@@ -22,10 +21,10 @@ class Payment(Base):
     __tablename__ = "payments"
 
     # UUID primary key — avoids sequential IDs that leak info
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Which order this payment belongs to
-    order_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    order_id = Column(Uuid(as_uuid=True), nullable=False, index=True)
 
     # Payment amount in the smallest currency unit
     amount = Column(Float, nullable=False)
