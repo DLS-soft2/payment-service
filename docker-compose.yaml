@@ -1,0 +1,46 @@
+# Docker Compose for local development of Payment Service.
+#
+# NOTE: Kafka runs in the infra repo — start it first:
+#   cd ../infra && docker compose up -d
+#
+# Then start this service:
+#   docker compose up --build
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: payment
+      POSTGRES_DB: payment_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - payment_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  payment-service:
+    build: .
+    ports:
+      - "8003:8000"
+    environment:
+      DATABASE_URL: postgresql://payment:payment@postgres:5432/payment_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - docker_default
+
+volumes:
+  payment_pgdata:
+
+networks:
+  docker_default:
+    external: true
