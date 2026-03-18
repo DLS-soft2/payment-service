@@ -16,7 +16,6 @@ worker that sits by the mailbox and processes each letter.
 
 import asyncio
 import json
-import random
 import logging
 from datetime import datetime, timezone
 
