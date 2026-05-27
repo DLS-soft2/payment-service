@@ -14,10 +14,10 @@ Events OUT (produced to "payments" topic):
   - PaymentFailed: payment failed, order should be cancelled
 """
 
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OrderCreated(BaseModel):
@@ -27,6 +27,7 @@ class OrderCreated(BaseModel):
     Published by Order Service when a customer places a new order.
     Contains the minimum info Payment Service needs to process payment.
     """
+    event_id: UUID = Field(default_factory=uuid4)
     event_type: str = "OrderCreated"
     order_id: UUID
     customer_id: UUID
@@ -42,6 +43,7 @@ class PaymentAuthorized(BaseModel):
     Order Service consumes this and updates the order status to PAID.
     Restaurant Service may also consume it to start preparing the food.
     """
+    event_id: UUID = Field(default_factory=uuid4)
     event_type: str = "PaymentAuthorized"
     order_id: UUID
     payment_id: UUID
@@ -55,6 +57,7 @@ class PaymentFailed(BaseModel):
 
     Order Service consumes this and updates the order status to CANCELLED.
     """
+    event_id: UUID = Field(default_factory=uuid4)
     event_type: str = "PaymentFailed"
     order_id: UUID
     reason: str
