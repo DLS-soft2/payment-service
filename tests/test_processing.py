@@ -145,3 +145,29 @@ def test_handle_order_created_failed_event_contains_customer_id(db):
     assert event_data["event_type"] == "PaymentFailed"
     assert event_data["customer_id"] == customer_id
     assert event_data["order_id"] == order_id
+
+
+def test_handle_order_created_without_restaurant_id(db):
+    """OrderCreated without restaurant_id still processes and publishes events."""
+    order_id = uuid.uuid4()
+    customer_id = uuid.uuid4()
+
+    message = {
+        "order_id": str(order_id),
+        "customer_id": str(customer_id),
+        "amount": 50.0,
+        "card_number": "4242424242420000",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    mock_publish = AsyncMock()
+    with patch("app.kafka_consumer.SessionLocal", return_value=db), \
+         patch("app.kafka_consumer.publish_event", mock_publish):
+        asyncio.run(handle_order_created(message))
+
+    mock_publish.assert_called_once()
+    _topic, event_data = mock_publish.call_args.args
+    assert event_data["event_type"] == "PaymentAuthorized"
+    assert event_data["order_id"] == order_id
+    assert event_data["customer_id"] == customer_id
+    assert event_data["restaurant_id"] is None

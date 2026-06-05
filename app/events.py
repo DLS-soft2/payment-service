@@ -24,7 +24,7 @@ class PaymentAuthorized(BaseModel):
     event_type: str = "PaymentAuthorized"
     order_id: UUID
     customer_id: UUID
-    restaurant_id: UUID
+    restaurant_id: UUID | None = None
     payment_id: UUID
     amount: float
     timestamp: datetime
@@ -36,6 +36,6 @@ class PaymentFailed(BaseModel):
     event_id: UUID = Field(default_factory=uuid4)
     event_type: str = "PaymentFailed"
     order_id: UUID
-    customer_id: UUID
+    customer_id: UUID | None = None
     reason: str
     timestamp: datetime
