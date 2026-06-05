@@ -1,19 +1,3 @@
-"""
-Kafka consumer for the Payment Service.
-
-Listens on the 'orders' topic for OrderCreated events.
-When an order comes in, it:
-  1. Validates the event data
-  2. Simulates payment processing
-  3. Saves the payment record to PostgreSQL
-  4. Publishes the result (PaymentAuthorized or PaymentFailed)
-     to the 'payments' topic
-
-The consumer runs as a background task — it loops forever,
-picking up new messages as they arrive. Think of it as a
-worker that sits by the mailbox and processes each letter.
-"""
-
 import asyncio
 import json
 import logging
@@ -130,6 +114,8 @@ async def handle_order_created(message_value: dict):
         if payment.status == "AUTHORIZED":
             event = PaymentAuthorized(
                 order_id=order_event.order_id,
+                customer_id=order_event.customer_id,
+                restaurant_id=order_event.restaurant_id,
                 payment_id=payment.id,
                 amount=payment.amount,
                 timestamp=now,
@@ -137,6 +123,7 @@ async def handle_order_created(message_value: dict):
         else:
             event = PaymentFailed(
                 order_id=order_event.order_id,
+                customer_id=order_event.customer_id,
                 reason="Payment declined",
                 timestamp=now,
             )

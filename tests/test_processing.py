@@ -1,15 +1,10 @@
-"""
-Tests for payment processing logic.
-
-These test the business logic (simulate_payment, process_payment)
-independently of Kafka.
-"""
-
+import asyncio
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import patch, AsyncMock
 
 from app.events import OrderCreated
-from app.kafka_consumer import simulate_payment, process_payment
+from app.kafka_consumer import simulate_payment, process_payment, handle_order_created
 
 
 # --- simulate_payment tests ---
@@ -93,3 +88,60 @@ def test_process_payment_failed(db):
 
     payment = process_payment(order_event, db)
     assert payment.status == "FAILED"
+
+
+# --- handle_order_created event enrichment tests ---
+
+
+def test_handle_order_created_authorized_event_contains_enriched_fields(db):
+    """PaymentAuthorized event must carry customer_id and restaurant_id from the order."""
+    customer_id = uuid.uuid4()
+    restaurant_id = uuid.uuid4()
+    order_id = uuid.uuid4()
+
+    message = {
+        "order_id": str(order_id),
+        "customer_id": str(customer_id),
+        "restaurant_id": str(restaurant_id),
+        "amount": 50.0,
+        "card_number": "4242424242420000",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    mock_publish = AsyncMock()
+    with patch("app.kafka_consumer.SessionLocal", return_value=db), \
+         patch("app.kafka_consumer.publish_event", mock_publish):
+        asyncio.run(handle_order_created(message))
+
+    mock_publish.assert_called_once()
+    _topic, event_data = mock_publish.call_args.args
+    assert event_data["event_type"] == "PaymentAuthorized"
+    assert event_data["customer_id"] == customer_id
+    assert event_data["restaurant_id"] == restaurant_id
+    assert event_data["order_id"] == order_id
+
+
+def test_handle_order_created_failed_event_contains_customer_id(db):
+    """PaymentFailed event must carry customer_id from the order."""
+    customer_id = uuid.uuid4()
+    order_id = uuid.uuid4()
+
+    message = {
+        "order_id": str(order_id),
+        "customer_id": str(customer_id),
+        "restaurant_id": str(uuid.uuid4()),
+        "amount": 50.0,
+        "card_number": "4242424242429999",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    mock_publish = AsyncMock()
+    with patch("app.kafka_consumer.SessionLocal", return_value=db), \
+         patch("app.kafka_consumer.publish_event", mock_publish):
+        asyncio.run(handle_order_created(message))
+
+    mock_publish.assert_called_once()
+    _topic, event_data = mock_publish.call_args.args
+    assert event_data["event_type"] == "PaymentFailed"
+    assert event_data["customer_id"] == customer_id
+    assert event_data["order_id"] == order_id

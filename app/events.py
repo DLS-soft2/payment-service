@@ -1,19 +1,3 @@
-"""
-Kafka event schemas for the Payment Service.
-
-These define the structure of messages that flow through Kafka.
-Think of them as contracts between services — Order Service and
-Payment Service agree on what an OrderCreated event looks like,
-even though they never talk directly to each other.
-
-Events IN (consumed from "orders" topic):
-  - OrderCreated: a new order has been placed, payment is needed
-
-Events OUT (produced to "payments" topic):
-  - PaymentAuthorized: payment succeeded, order can proceed
-  - PaymentFailed: payment failed, order should be cancelled
-"""
-
 from uuid import UUID, uuid4
 from datetime import datetime
 
@@ -21,44 +5,37 @@ from pydantic import BaseModel, Field
 
 
 class OrderCreated(BaseModel):
-    """
-    Event consumed from the 'orders' topic.
+    """Consumed from the 'orders' topic when a customer places a new order."""
 
-    Published by Order Service when a customer places a new order.
-    Contains the minimum info Payment Service needs to process payment.
-    """
     event_id: UUID = Field(default_factory=uuid4)
     event_type: str = "OrderCreated"
     order_id: UUID
     customer_id: UUID
+    restaurant_id: UUID | None = None
     amount: float
-    card_number: str = "4242424242420000"  # Default to a card that always succeeds
+    card_number: str = "4242424242420000"
     timestamp: datetime
 
 
 class PaymentAuthorized(BaseModel):
-    """
-    Event produced to the 'payments' topic on success.
+    """Produced to the 'payments' topic when payment succeeds."""
 
-    Order Service consumes this and updates the order status to PAID.
-    Restaurant Service may also consume it to start preparing the food.
-    """
     event_id: UUID = Field(default_factory=uuid4)
     event_type: str = "PaymentAuthorized"
     order_id: UUID
+    customer_id: UUID
+    restaurant_id: UUID
     payment_id: UUID
     amount: float
     timestamp: datetime
 
 
 class PaymentFailed(BaseModel):
-    """
-    Event produced to the 'payments' topic on failure.
+    """Produced to the 'payments' topic when payment fails."""
 
-    Order Service consumes this and updates the order status to CANCELLED.
-    """
     event_id: UUID = Field(default_factory=uuid4)
     event_type: str = "PaymentFailed"
     order_id: UUID
+    customer_id: UUID
     reason: str
     timestamp: datetime
