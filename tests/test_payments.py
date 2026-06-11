@@ -1,13 +1,8 @@
-"""
-Tests for Payment Service REST endpoints.
-
-These test the read-only API. Payment creation will be tested
-separately once Kafka integration is added.
-"""
-
 import uuid
 
 from app.models import Payment
+
+AUTH_HEADERS = {"x-user-id": "test-user", "x-user-roles": "customer"}
 
 
 def test_root(client):
@@ -27,7 +22,7 @@ def test_health(client):
 
 def test_list_payments_empty(client):
     """Listing payments on a fresh database returns an empty list."""
-    response = client.get("/v1/payments/")
+    response = client.get("/api/v1/payments/", headers=AUTH_HEADERS)
     assert response.status_code == 200
     assert response.json() == []
 
@@ -35,7 +30,7 @@ def test_list_payments_empty(client):
 def test_get_payment_not_found(client):
     """Fetching a non-existent payment returns 404."""
     fake_id = uuid.uuid4()
-    response = client.get(f"/v1/payments/{fake_id}")
+    response = client.get(f"/api/v1/payments/{fake_id}", headers=AUTH_HEADERS)
     assert response.status_code == 404
 
 
@@ -50,7 +45,7 @@ def test_list_payments_with_data(client, db):
     db.add(payment)
     db.commit()
 
-    response = client.get("/v1/payments/")
+    response = client.get("/api/v1/payments/", headers=AUTH_HEADERS)
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -68,7 +63,7 @@ def test_get_payments_by_order(client, db):
         db.add(payment)
     db.commit()
 
-    response = client.get(f"/v1/payments/order/{order_id}")
+    response = client.get(f"/api/v1/payments/order/{order_id}", headers=AUTH_HEADERS)
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2

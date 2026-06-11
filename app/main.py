@@ -1,13 +1,3 @@
-"""
-Payment Service — FastAPI application entry point.
-
-This service handles payment processing for the DLS-2 food delivery platform.
-It consumes OrderCreated events from Kafka, processes payments, and publishes
-PaymentAuthorized or PaymentFailed events back to Kafka.
-
-The REST API is read-only — payments are created via Kafka events, not HTTP.
-"""
-
 import asyncio
 import logging
 from contextlib import asynccontextmanager
