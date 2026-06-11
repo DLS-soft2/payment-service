@@ -1,10 +1,3 @@
-"""
-Test fixtures for Payment Service.
-
-Uses SQLite in-memory instead of PostgreSQL and disables Kafka
-so tests run instantly without needing any infrastructure.
-"""
-
 import pytest
 from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
