@@ -118,6 +118,7 @@ async def handle_order_created(message_value: dict):
                 restaurant_id=order_event.restaurant_id,
                 payment_id=payment.id,
                 amount=payment.amount,
+                delivery_address=order_event.delivery_address,
                 timestamp=now,
             )
         else:

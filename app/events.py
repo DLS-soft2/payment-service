@@ -14,6 +14,7 @@ class OrderCreated(BaseModel):
     restaurant_id: UUID | None = None
     amount: float
     card_number: str = "4242424242420000"
+    delivery_address: str | None = None
     timestamp: datetime
 
 
@@ -27,6 +28,7 @@ class PaymentAuthorized(BaseModel):
     restaurant_id: UUID | None = None
     payment_id: UUID
     amount: float
+    delivery_address: str | None = None
     timestamp: datetime
 
 
