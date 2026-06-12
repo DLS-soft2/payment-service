@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
 from app import database
@@ -69,6 +70,7 @@ app = FastAPI(
     version=settings.service_version,
     lifespan=lifespan,
 )
+Instrumentator().instrument(app).expose(app)
 
 # Register the REST router
 app.include_router(payments.router)
