@@ -41,3 +41,40 @@ class PaymentFailed(BaseModel):
     customer_id: UUID | None = None
     reason: str
     timestamp: datetime
+
+
+class RestaurantRejected(BaseModel):
+    """Consumed from the 'restaurants' topic when a restaurant rejects an order."""
+
+    event_id: UUID = Field(default_factory=uuid4)
+    event_type: str = "RestaurantRejected"
+    order_id: UUID
+    customer_id: UUID
+    restaurant_id: UUID
+    reason: str
+    timestamp: datetime
+
+
+class CourierAssignmentFailed(BaseModel):
+    """Consumed from the 'couriers' topic when no courier can be assigned."""
+
+    event_id: UUID = Field(default_factory=uuid4)
+    event_type: str = "CourierAssignmentFailed"
+    order_id: UUID
+    customer_id: UUID
+    restaurant_id: UUID
+    reason: str
+    timestamp: datetime
+
+
+class PaymentRefunded(BaseModel):
+    """Produced to the 'payments' topic when a payment is refunded."""
+
+    event_id: UUID = Field(default_factory=uuid4)
+    event_type: str = "PaymentRefunded"
+    order_id: UUID
+    customer_id: UUID
+    payment_id: UUID
+    amount: float
+    reason: str
+    timestamp: datetime

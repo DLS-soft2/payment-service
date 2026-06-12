@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # Kafka topics this service interacts with
     kafka_topic_orders: str = "orders"
     kafka_topic_payments: str = "payments"
+    kafka_topic_restaurants: str = "restaurants"
+    kafka_topic_couriers: str = "couriers"
 
 
 # Single instance used throughout the app
