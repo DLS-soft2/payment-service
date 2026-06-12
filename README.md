@@ -18,6 +18,13 @@ This service is **event-driven** — payments are not created via REST. Instead:
 3. Payment Service publishes `PaymentAuthorized` or `PaymentFailed` to the `payments` Kafka topic
 4. Order Service consumes the result and updates the order status
 
+**Refund flow (compensating action):**
+
+5. If a downstream service fails (e.g. `RestaurantRejected` on `restaurants` topic, `CourierAssignmentFailed` on `couriers` topic), Payment Service consumes the event
+6. Payment transitions from AUTHORIZED → REFUNDED
+7. Payment Service publishes `PaymentRefunded` to the `payments` topic
+8. Order Service consumes `PaymentRefunded` and cancels the order
+
 The REST API is read-only — it lets other services and the frontend check payment status.
 
 ### Payment Simulation
@@ -42,20 +49,23 @@ Business rules applied regardless of card: amounts over 10,000 or less than/equa
 |--------|----------|-------------|
 | GET | `/` | Service info |
 | GET | `/health` | Health check |
-| GET | `/v1/payments/` | List all payments (with pagination) |
-| GET | `/v1/payments/{id}` | Get payment by UUID |
-| GET | `/v1/payments/order/{order_id}` | Get payments for a specific order |
+| GET | `/api/v1/payments/` | List all payments (with pagination) |
+| GET | `/api/v1/payments/{id}` | Get payment by UUID |
+| GET | `/api/v1/payments/order/{order_id}` | Get payments for a specific order |
 
 ### Kafka Events
 
-**Consumes** from `orders` topic:
+**Consumes:**
 
-- `OrderCreated` — triggers payment processing
+- `orders` topic: `OrderCreated` — triggers payment processing
+- `restaurants` topic: `RestaurantRejected` — triggers refund
+- `couriers` topic: `CourierAssignmentFailed` — triggers refund
 
 **Produces** to `payments` topic:
 
 - `PaymentAuthorized` — payment succeeded, order can proceed
 - `PaymentFailed` — payment failed, order should be cancelled
+- `PaymentRefunded` — payment refunded due to downstream failure
 
 ## Project Structure
 
@@ -107,7 +117,7 @@ poetry run uvicorn app.main:app --port 8003 --reload
 Tests use SQLite in-memory and mock Kafka — no infrastructure needed:
 
 ```bash
-poetry run pytest -v
+poetry run pytest -v              # 27 tests
 ```
 
 ## CI/CD
