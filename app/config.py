@@ -1,11 +1,3 @@
-"""
-Application settings loaded from environment variables.
-
-Uses pydantic-settings to automatically read env vars.
-Default values match the docker-compose setup so the service
-works out of the box with `docker compose up`.
-"""
-
 from importlib.metadata import PackageNotFoundError, version
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,7 +13,7 @@ def _get_default_service_version() -> str:
         return version("payment-service")
     except PackageNotFoundError:
         # Keep this in sync with the project version in pyproject.toml
-        return "0.2.0"
+        return "0.7.0"
 
 
 class Settings(BaseSettings):

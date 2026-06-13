@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import Payment
+from app.models import Payment, ProcessedEvent
 from app.events import (
     OrderCreated, PaymentAuthorized, PaymentFailed,
     RestaurantRejected, CourierAssignmentFailed, PaymentRefunded,
@@ -18,10 +18,15 @@ from app.kafka_producer import publish_event
 
 logger = logging.getLogger(__name__)
 
-# In-memory set of processed event IDs to prevent duplicate processing.
-# Sufficient for single-instance deployments; a persistent store (e.g. DB table)
-# would be needed for multi-instance setups.
-_processed_event_ids: set[str] = set()
+
+def is_event_processed(db: Session, event_id: str) -> bool:
+    """Check if an event has already been processed (idempotency guard)."""
+    return db.query(ProcessedEvent).filter_by(event_id=event_id).first() is not None
+
+
+def mark_event_processed(db: Session, event_id: str, topic: str) -> None:
+    """Record that an event has been processed."""
+    db.add(ProcessedEvent(event_id=event_id, topic=topic))
 
 
 def simulate_payment(amount: float, card_number: str) -> tuple[bool, str]:
@@ -83,7 +88,7 @@ def process_payment(order_event: OrderCreated, db: Session) -> Payment:
         status="AUTHORIZED" if success else "FAILED",
     )
     db.add(payment)
-    db.commit()
+    db.flush()
     db.refresh(payment)
 
     logger.info(
@@ -96,28 +101,24 @@ def process_payment(order_event: OrderCreated, db: Session) -> Payment:
     return payment
 
 
-async def handle_order_created(message_value: dict):
-    """
-    Handle a single OrderCreated event.
+async def handle_order_created(message_value: dict, db: Session | None = None):
+    """Handle a single OrderCreated event.
 
-    This is where the core business logic lives:
-    1. Parse and validate the event
-    2. Process the payment
-    3. Publish the result to the payments topic
+    Parses the event, processes the payment, and publishes the result.
+    When db is provided, the caller owns the session lifecycle.
     """
-    # Parse the raw dict into our typed event model
     try:
         order_event = OrderCreated(**message_value)
     except Exception as exc:
         logger.error("Invalid OrderCreated event: %s — %s", message_value, exc)
         return
 
-    # Process payment (uses its own DB session)
-    db = SessionLocal()
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
     try:
         payment = process_payment(order_event, db)
 
-        # Publish the result to the payments topic
         now = datetime.now(timezone.utc)
 
         if payment.status == "AUTHORIZED":
@@ -141,7 +142,9 @@ async def handle_order_created(message_value: dict):
         await publish_event(settings.kafka_topic_payments, event.model_dump())
 
     finally:
-        db.close()
+        if owns_session:
+            db.commit()
+            db.close()
 
 
 def refund_payment(order_id: UUID, reason: str, db: Session) -> Payment | None:
@@ -164,7 +167,7 @@ def refund_payment(order_id: UUID, reason: str, db: Session) -> Payment | None:
         return None
 
     payment.status = "REFUNDED"
-    db.commit()
+    db.flush()
     db.refresh(payment)
 
     logger.info("Payment %s for order %s refunded: %s", payment.id, order_id, reason)
@@ -174,15 +177,19 @@ def refund_payment(order_id: UUID, reason: str, db: Session) -> Payment | None:
 async def handle_refund_event(
     event_model: RestaurantRejected | CourierAssignmentFailed,
     reason_prefix: str,
+    db: Session | None = None,
 ) -> None:
     """Handle a failure event that triggers a payment refund.
 
     Shared handler for RestaurantRejected and CourierAssignmentFailed events.
     Looks up the payment, refunds it, and publishes PaymentRefunded.
+    When db is provided, the caller owns the session lifecycle.
     """
     reason = f"{reason_prefix}: {event_model.reason}"
 
-    db = SessionLocal()
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
     try:
         payment = refund_payment(
             order_id=event_model.order_id,
@@ -202,7 +209,9 @@ async def handle_refund_event(
         )
         await publish_event(settings.kafka_topic_payments, refund_event.model_dump())
     finally:
-        db.close()
+        if owns_session:
+            db.commit()
+            db.close()
 
 
 _EVENT_ROUTING: dict[str, tuple[type, str]] = {
@@ -211,13 +220,14 @@ _EVENT_ROUTING: dict[str, tuple[type, str]] = {
 }
 
 
-async def _route_event(event_type: str, value: dict) -> bool:
+async def _route_event(event_type: str, value: dict, db: Session) -> bool:
     """Route an incoming message to the correct handler.
 
     Returns True if the event was handled, False if the event type is unknown.
+    The caller provides the DB session so dedup and business logic share a transaction.
     """
     if event_type == "OrderCreated":
-        await handle_order_created(value)
+        await handle_order_created(value, db=db)
         return True
 
     routing = _EVENT_ROUTING.get(event_type)
@@ -229,9 +239,9 @@ async def _route_event(event_type: str, value: dict) -> bool:
         event = model_cls(**value)
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error("Invalid %s event: %s — %s", event_type, value, exc)
-        return False  # Parse failed — allow retry with the same event_id
+        return False
 
-    await handle_refund_event(event, reason_prefix)
+    await handle_refund_event(event, reason_prefix, db=db)
     return True
 
 
@@ -284,18 +294,23 @@ async def start_consumer():
             event_type = value.get("event_type")
             event_id = value.get("event_id")
 
-            # Idempotency guard: skip already-processed events
-            if event_id and event_id in _processed_event_ids:
-                logger.info("Event %s already processed — skipping", event_id)
-                continue
+            db = SessionLocal()
+            try:
+                # Idempotency guard: skip already-processed events (DB-backed)
+                if event_id and is_event_processed(db, event_id):
+                    logger.info("Event %s already processed — skipping", event_id)
+                    continue
 
-            handled = await _route_event(event_type, value)
-            if not handled:
-                logger.warning("Unknown event type: %s — skipping", event_type)
-                continue
+                handled = await _route_event(event_type, value, db)
+                if not handled:
+                    logger.warning("Unknown event type: %s — skipping", event_type)
+                    continue
 
-            if event_id:
-                _processed_event_ids.add(event_id)
+                if event_id:
+                    mark_event_processed(db, event_id, message.topic)
+                db.commit()
+            finally:
+                db.close()
 
     except asyncio.CancelledError:
         logger.info("Consumer task was cancelled")

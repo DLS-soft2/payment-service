@@ -6,7 +6,7 @@ from unittest.mock import patch, AsyncMock
 from app.events import OrderCreated, RestaurantRejected, CourierAssignmentFailed
 from app.kafka_consumer import (
     simulate_payment, process_payment, handle_order_created,
-    refund_payment, handle_refund_event, _processed_event_ids,
+    refund_payment, handle_refund_event,
 )
 from app.models import Payment
 
@@ -238,6 +238,7 @@ def test_handle_refund_event_restaurant_rejected(db):
     db.add(payment)
     db.commit()
     db.refresh(payment)
+    payment_id = payment.id
 
     event = RestaurantRejected(
         order_id=order_id,
@@ -258,7 +259,7 @@ def test_handle_refund_event_restaurant_rejected(db):
     assert event_data["event_type"] == "PaymentRefunded"
     assert event_data["order_id"] == order_id
     assert event_data["customer_id"] == customer_id
-    assert event_data["payment_id"] == payment.id
+    assert event_data["payment_id"] == payment_id
     assert event_data["amount"] == 75.0
     assert "Restaurant rejected order: Kitchen closed" in event_data["reason"]
 
@@ -271,6 +272,7 @@ def test_handle_refund_event_courier_assignment_failed(db):
     db.add(payment)
     db.commit()
     db.refresh(payment)
+    payment_id = payment.id
 
     event = CourierAssignmentFailed(
         order_id=order_id,
@@ -291,7 +293,7 @@ def test_handle_refund_event_courier_assignment_failed(db):
     assert event_data["event_type"] == "PaymentRefunded"
     assert event_data["order_id"] == order_id
     assert event_data["customer_id"] == customer_id
-    assert event_data["payment_id"] == payment.id
+    assert event_data["payment_id"] == payment_id
     assert event_data["amount"] == 30.0
     assert "Courier assignment failed: No available couriers" in event_data["reason"]
 
@@ -337,17 +339,3 @@ def test_handle_refund_event_no_payment_no_publish(db):
     mock_publish.assert_not_called()
 
 
-# --- idempotency guard tests ---
-
-
-def test_idempotency_guard_skips_duplicate_event(db):
-    """The same event_id should not be processed twice."""
-    event_id = str(uuid.uuid4())
-
-    # Simulate that this event_id was already processed
-    _processed_event_ids.add(event_id)
-
-    try:
-        assert event_id in _processed_event_ids
-    finally:
-        _processed_event_ids.discard(event_id)
